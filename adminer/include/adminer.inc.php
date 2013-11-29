@@ -654,7 +654,12 @@ username.form['auth[driver]'].onchange();
 				}
 				$fields = fields($table);
 			}
-			$result = $connection->query($query, 1); // 1 - MYSQLI_USE_RESULT //! enum and set as numbers
+      // need this decoupled for non-relational dbs.
+      if( method_exists($connection, 'dump') ) {
+        $result = $connection->dump($table, $query);
+      } else {
+        $result = $connection->query($query, 1); // 1 - MYSQLI_USE_RESULT //! enum and set as numbers
+      }
 			if ($result) {
 				$insert = "";
 				$buffer = "";
