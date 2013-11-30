@@ -73,6 +73,22 @@ function h($string) {
 	return htmlspecialchars(str_replace("\0", "", $string), ENT_QUOTES);
 }
 
+function tep_dd() {
+  echo '<pre>';
+  $args = func_get_args();
+  foreach( $args as $arg ) {
+    var_dump($arg);
+  }
+  exit();
+}
+
+function tep_tr() {
+  echo '<pre>';
+  die(var_dump(debug_backtrace(false)));
+  exit();
+}
+
+
 /** Escape for TD
 * @param string
 * @return string

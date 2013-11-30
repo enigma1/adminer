@@ -654,9 +654,9 @@ username.form['auth[driver]'].onchange();
 				}
 				$fields = fields($table);
 			}
-      // need this decoupled for non-relational dbs.
-      if( method_exists($connection, 'dump') ) {
-        $result = $connection->dump($table, $query);
+
+      if( method_exists($connection, __FUNCTION__) ) {
+        $result = $connection->{__FUNCTION__}($table, $query);
       } else {
         $result = $connection->query($query, 1); // 1 - MYSQLI_USE_RESULT //! enum and set as numbers
       }
@@ -666,6 +666,7 @@ username.form['auth[driver]'].onchange();
 				$keys = array();
 				$suffix = "";
 				$fetch_function = ($table != '' ? 'fetch_assoc' : 'fetch_row');
+
 				while ($row = $result->$fetch_function()) {
 					if (!$keys) {
 						$values = array();

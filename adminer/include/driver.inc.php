@@ -62,7 +62,18 @@
 			$values[] = "$key = $val";
 		}
 		$query = table($table) . " SET$separator" . implode(",$separator", $values);
-		return queries("UPDATE" . ($limit ? limit1($query, $queryWhere) : " $query$queryWhere"));
+
+    if( method_exists($this->_conn, __FUNCTION__) ) {
+      $condition = array();
+      $t = ltrim($queryWhere, "\nWHERE ");
+      $tmp_array = explode(' = ', $t);
+
+      if( !empty($tmp_array) && count($tmp_array) > 1 ) {
+        $condition = array($tmp_array[0] => $tmp_array[1]);
+      }
+      return $this->_conn->{__FUNCTION__}($table, $set, $condition, $limit );
+    }
+  	return queries("UPDATE" . ($limit ? limit1($query, $queryWhere) : " $query$queryWhere"));
 	}
 	
 	/** Insert data into table

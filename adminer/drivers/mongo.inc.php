@@ -30,11 +30,9 @@ if (isset($_GET["mongo"])) {
       }
 
       function cmd($cmd) {
-//echo '<pre>';
-//var_dump(debug_backtrace(false));
-
         $result = false;
         $data = $this->_db->command(array('$eval' => $cmd, 'nolock' => true));
+
         if( $data['ok'] && isset($data['retval']) ) {
           $result = new Min_Result($data['retval']);
         } else {
@@ -45,14 +43,15 @@ if (isset($_GET["mongo"])) {
       }
 
       function query($query) {
-        $query = str_replace("\r\n","n", trim($query, ' ;'));
+        $query = str_replace("\r\n","\n", trim($query, ' ;'));
         $this->error = "";
         $pre = 'db.';
 
         if( substr( $query, 0, strlen($pre)) != $pre ) {
           $query = $pre . $query;
         }
-        return $this->cmd($query);
+        $result = $this->cmd($query);
+        return $result;
       }
 
       function multi_query($query) {
@@ -67,7 +66,33 @@ if (isset($_GET["mongo"])) {
         return false;
       }
 
-      function dump($table='', $condition='') {
+      function update($table, $set, $condition=array(), $limit=1) {
+        $json = '';
+        if( empty($condition) ) {
+          $json .= '{}';
+        } else {
+          $json .= '{';
+          foreach($condition as $key => $value) {
+            if( $key == '_id' ) {
+              $value = 'ObjectId(' . $value . ')';
+            }
+            $json .= $key . ':' . $value . ',';
+          }
+          $json = rtrim($json, ',') . '}';
+        }
+
+        $json .= ',{';
+        foreach($set as $key => $value) {
+          if( $key == '_id' ) continue;
+          $json .= $key . ':' . $value . ',';
+        }
+        $json = rtrim($json, ',') . '}';
+        $query = $table.'.update(' . $json . ')';
+        $result = $this->query($query);
+        return $result;
+      }
+
+      function dumpData($table='', $condition='') {
         $query = 'db.'.$table.'.find().toArray()';
         $result = $this->query($query);
         return $result;
@@ -116,6 +141,7 @@ if (isset($_GET["mongo"])) {
           }
 
           $this->_rows[] = $row;
+
           foreach ($row as $key => $val) {
             if( $single ) {
               $this->_rows[0][$key] = $val;
@@ -160,10 +186,8 @@ if (isset($_GET["mongo"])) {
           'charsetnr' => $this->_charset[$name],
         );
       }
-
     }
   }
-
 
 
   class Min_Driver extends Min_SQL {
@@ -184,23 +208,18 @@ if (isset($_GET["mongo"])) {
       $limit = empty($limit)?'':'.limit(' . (int)$limit . ')';
 
       if( !empty($where) ) {
-//        $where[0] = preg_replace("/(.*) \= \'([0-9a-z]+)\'/", '$1:$2', $where[0]);
         $pos = strpos($where[0], '_id');
         if( $pos !== false && !$pos ) {
           $where[0] = preg_replace("/_id \= \'([0-9a-z]+)\'/", '$1', $where[0]);
           $query = 'findOne({_id: ObjectId("' . $where[0] . '")})';
         } else {
           $query = 'find()' . $skip.$order.$limit . '.toArray()';
-//          $where[0] = preg_replace("/(".implode('|', array_keys($select)).") \= \'([0-9a-z]*)\'/", '{$1:$2},{$1:true}', $where[0]);
-//          $query = 'find({' . $where[0] . '}).toArray()';
         }
       } else {
         $query = 'find()' . $skip.$order.$limit . '.toArray()';
       }
-//tep_dd($query);
       $cmd = 'db.'.$table.'.'.$query;
       $result = $connection->query($cmd);
-//tep_dd($result);
       return $result;
 
       foreach ($connection->_db->selectCollection($table)->find(array(), $select) as $val) {
@@ -336,12 +355,6 @@ if (isset($_GET["mongo"])) {
       );
     }
     return $result_array;
-
-    return array("_id" => array(
-      "field" => "_id",
-      "auto_increment" => true,
-      "privileges" => array("select" => 1, "insert" => 1, "update" => 1),
-    ));
   }
 
   function convert_field($field) {
