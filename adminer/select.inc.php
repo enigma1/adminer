@@ -290,14 +290,36 @@ if (!$columns && support("table")) {
 			$functions = array();
 			reset($select);
 			$rank = 1;
-			foreach ($rows[0] as $key => $val) {
+
+      // Get all fields for non-sql
+      $row_headers = array();
+      foreach($rows as $key => $val) {
+        $row_headers = array_unique(array_merge($row_headers, array_keys($val)));
+      }
+
+      $row_headers = array_flip($row_headers);
+
+			foreach ($row_headers as $key => $val) {
 				if ($key != $oid) {
 					$val = $_GET["columns"][key($select)];
 					$field = $fields[$select ? ($val ? $val["col"] : current($select)) : $key];
 					$name = ($field ? $adminer->fieldName($field, $rank) : ($val["fun"] ? "*" : $key));
+
+          // Allow column ordering from user input
+          if( !empty($select) ) {
+            $key = current($select);
+            // Skip empty columns
+            if( empty($val) ) {
+  						$rank++;
+    					next($select);
+              continue;
+            }
+          }
+
 					if ($name != "") {
 						$rank++;
 						$names[$key] = $name;
+
 						$column = idf_escape($key);
 						$href = remove_from_uri('(order|desc)[^=]*|page') . '&order%5B0%5D=' . urlencode($key);
 						$desc = "&desc%5B0%5D=1";
@@ -354,6 +376,11 @@ if (!$columns && support("table")) {
 				}
 				echo "<tr" . odd() . ">" . (!$group && $select ? "" : "<td>" . checkbox("check[]", substr($unique_idf, 1), in_array(substr($unique_idf, 1), (array) $_POST["check"]), "", "this.form['all'].checked = false; formUncheck('all-page');") . ($is_group || information_schema(DB) ? "" : " <a href='" . h(ME . "edit=" . urlencode($TABLE) . $unique_idf) . "'>" . lang('edit') . "</a>"));
 
+        // Rearrange keys on selected columns
+        if( !empty($select) ) {
+          array_reorder_keys($row, implode(',', $select) );
+        }
+
 				foreach ($row as $key => $val) {
 					if (isset($names[$key])) {
 						$field = $fields[$key];
@@ -404,6 +431,7 @@ if (!$columns && support("table")) {
 							$long = strpos($val, "<i>...</i>");
 							echo "<td id='$id' onclick=\"selectClick(this, event, " . ($long ? 2 : ($text ? 1 : 0)) . ($editable ? "" : ", '" . h(lang('Use edit link to modify this value.')) . "'") . ");\">$val";
 						}
+
 					}
 				}
 

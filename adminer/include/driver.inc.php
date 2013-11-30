@@ -44,6 +44,10 @@
 	* @return bool
 	*/
 	function delete($table, $queryWhere, $limit = 0) {
+    if( method_exists($this->_conn, __FUNCTION__) ) {
+      $condition = tep_convert_where_to_array($queryWhere);
+      return $this->_conn->{__FUNCTION__}($table, $condition, $limit );
+    }
 		$query = "FROM " . table($table);
 		return queries("DELETE" . ($limit ? limit1($query, $queryWhere) : " $query$queryWhere"));
 	}
@@ -64,13 +68,7 @@
 		$query = table($table) . " SET$separator" . implode(",$separator", $values);
 
     if( method_exists($this->_conn, __FUNCTION__) ) {
-      $condition = array();
-      $t = ltrim($queryWhere, "\nWHERE ");
-      $tmp_array = explode(' = ', $t);
-
-      if( !empty($tmp_array) && count($tmp_array) > 1 ) {
-        $condition = array($tmp_array[0] => $tmp_array[1]);
-      }
+      $condition = tep_convert_where_to_array($queryWhere);
       return $this->_conn->{__FUNCTION__}($table, $set, $condition, $limit );
     }
   	return queries("UPDATE" . ($limit ? limit1($query, $queryWhere) : " $query$queryWhere"));

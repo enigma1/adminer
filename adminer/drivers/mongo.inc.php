@@ -7,7 +7,7 @@ if (isset($_GET["mongo"])) {
 
   if (class_exists('MongoDB')) {
     class Min_DB {
-      var $extension = "Mongo", $error, $_link, $_db;
+      var $extension = "Mongo", $error, $_link, $_db, $mbuffer='';
 
       function connect($server, $username, $password) {
         global $adminer;
@@ -42,20 +42,34 @@ if (isset($_GET["mongo"])) {
         return $result;
       }
 
-      function query($query) {
+      function query($query, $multi=false) {
+        $process_cmd = false;
+
+        if( substr(trim($query), -1) == ';' || !$multi ) {
+          $process_cmd = true;
+        }
+
         $query = str_replace("\r\n","\n", trim($query, ' ;'));
         $this->error = "";
-        $pre = 'db.';
+        $pre = $multi?'':'db.';
 
-        if( substr( $query, 0, strlen($pre)) != $pre ) {
+        if( !empty($pre) && substr( $query, 0, strlen($pre)) != $pre ) {
           $query = $pre . $query;
         }
-        $result = $this->cmd($query);
-        return $result;
+
+        $this->mbuffer .= $query . "\n";
+
+        if( $process_cmd ) {
+          $result = $this->cmd(trim($this->mbuffer));
+          $this->mbuffer = '';
+          return $result;
+        } else {
+          return false;
+        }
       }
 
       function multi_query($query) {
-        return $this->_result = $this->query($query);
+        return $this->_result = $this->query($query, true);
       }
 
       function store_result() {
@@ -67,33 +81,29 @@ if (isset($_GET["mongo"])) {
       }
 
       function update($table, $set, $condition=array(), $limit=1) {
-        $json = '';
-        if( empty($condition) ) {
-          $json .= '{}';
-        } else {
-          $json .= '{';
-          foreach($condition as $key => $value) {
-            if( $key == '_id' ) {
-              $value = 'ObjectId(' . $value . ')';
-            }
-            $json .= $key . ':' . $value . ',';
-          }
-          $json = rtrim($json, ',') . '}';
-        }
-
+        $json = $this->conditionToJson($condition);
         $json .= ',{';
         foreach($set as $key => $value) {
           if( $key == '_id' ) continue;
           $json .= $key . ':' . $value . ',';
         }
+
         $json = rtrim($json, ',') . '}';
         $query = $table.'.update(' . $json . ')';
         $result = $this->query($query);
         return $result;
       }
 
-      function dumpData($table='', $condition='') {
-        $query = 'db.'.$table.'.find().toArray()';
+      function delete($table, $condition='', $limit=1) {
+        $json = $this->conditionToJson($condition);
+        $query = $table.'.remove(' . $json . ')';
+        $result = $this->query($query);
+        return $result;
+      }
+
+      function dumpData($table, $condition=array(), $limit=0) {
+        $json = $this->conditionToJson($condition, true);
+        $query = $table.'.find(' . $json . ').toArray()';
         $result = $this->query($query);
         return $result;
       }
@@ -108,6 +118,46 @@ if (isset($_GET["mongo"])) {
         }
       }
 
+      function conditionToJson($condition, $leave_empty=false) {
+        $json = '';
+        if( empty($condition) && $leave_empty ) return $json;
+        if( empty($condition) ) return '{}';
+
+        $opMap = array(
+          'OR' => '$or',
+          'AND' => '$and',
+          'NO' => ''
+        );
+        $json .= '{';
+        foreach($condition as $op => $entries) {
+          $opc = $opMap[$op];
+          if( !empty($opc) ) {
+            $json .= $opc .': [';
+          } else {
+            $entries = array($entries);
+          }
+          for($i=0, $j=count($entries); $i<$j; $i++) {
+            $key = key($entries[$i]);
+            $value = current($entries[$i]);
+            if( $key == '_id' ) {
+              $value = 'ObjectId(' . $value . ')';
+            }
+            if( !empty($opc) ) {
+              $json .= '{' . $key . ':' . $value . '},';
+            } else {
+              $json .= $key . ':' . $value . ',';
+            }
+          }
+          if( !empty($opc) ) {
+            $json = rtrim($json, ',');
+            $json .= ']';
+          }
+        }
+        $json = rtrim($json, ',') . '}';
+
+        return $json;
+      }
+
       function quote($string) {
         return "'" . str_replace("'", "''", $string) . "'";
       }
@@ -118,14 +168,18 @@ if (isset($_GET["mongo"])) {
       var $num_rows, $_rows = array(), $_offset = 0, $_charset = array();
 
       function Min_Result($result) {
+
+        if( !is_array($result) && !is_object($result) ) $result = array($result);
+
         $single = !is_array(current($result))?true:false;
 
-        foreach ($result as $tkey => $item) {
+        foreach( $result as $tkey => $item ) {
           $row = array();
 
           if( !is_array($item) ) $item = array($tkey => $item);
 
           foreach ($item as $key => $val) {
+
             if (is_a($val, 'MongoBinData')) {
               $this->_charset[$key] = 63;
             }
@@ -150,6 +204,7 @@ if (isset($_GET["mongo"])) {
             }
           }
         }
+        if( $single ) $this->_rows = array($this->_rows[0]);
         $this->num_rows = count($this->_rows);
       }
 
@@ -192,6 +247,7 @@ if (isset($_GET["mongo"])) {
 
   class Min_Driver extends Min_SQL {
     function select($table, $select, $where, $group, $order, $limit, $page) {
+
       global $connection;
       if ($select == array("*")) {
         $select = array();
@@ -200,7 +256,6 @@ if (isset($_GET["mongo"])) {
       }
 
       $return = array();
-
       $tmp = explode(' ', $order[0]);
 
       $order = empty($order)?'':'.sort({'. $tmp[0] . ':' . (($tmp[1] == 'DESC')?-1:1) . '})';
@@ -216,20 +271,17 @@ if (isset($_GET["mongo"])) {
           $query = 'find()' . $skip.$order.$limit . '.toArray()';
         }
       } else {
-        $query = 'find()' . $skip.$order.$limit . '.toArray()';
+        $cols = '{}';
+        if( !empty($select) ) {
+          $cols = json_encode($select);
+        }
+        $query = 'find({}, ' . $cols . ')' . $skip.$order.$limit . '.toArray()';
       }
-      $cmd = 'db.'.$table.'.'.$query;
+      $cmd = $table.'.'.$query;
       $result = $connection->query($cmd);
       return $result;
-
-      foreach ($connection->_db->selectCollection($table)->find(array(), $select) as $val) {
-        $return[] = $val;
-      }
-      return new Min_Result($return);
     }
   }
-
-
 
   function connect() {
     global $adminer;
@@ -325,7 +377,6 @@ if (isset($_GET["mongo"])) {
 
   function fields($table) {
     global $connection;
-
     $id = isset($_GET['where']) && isset($_GET['where']['_id'])?$_GET['where']['_id']:'';
 
     if( !empty($id) ) {
@@ -333,8 +384,7 @@ if (isset($_GET["mongo"])) {
     } else {
       $query = 'find().toArray()';
     }
-    $cmd = 'db.'.$table.'.'.$query;
-
+    $cmd = $table.'.'.$query;
     $result = $connection->query($cmd);
 
     $result_array = array("_id" => array(
@@ -347,10 +397,17 @@ if (isset($_GET["mongo"])) {
 
     $result = $result->fetch_assoc();
 
+    $val = '';
     foreach($result as $key => $val ) {
       if( $key == '_id' ) continue;
+
+//      $query = 'findOne({_id: ObjectId("' . $val . '")})';
+//      $cmd = $table.'.'.$query;
+//      $result_type = $connection->query($cmd);
+
       $result_array[$key] = array(
         "field" => $key,
+//        "type" => $match[1],
         "privileges" => array("select" => 1, "insert" => 1, "update" => 1),
       );
     }

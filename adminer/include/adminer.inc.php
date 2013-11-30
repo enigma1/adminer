@@ -656,7 +656,8 @@ username.form['auth[driver]'].onchange();
 			}
 
       if( method_exists($connection, __FUNCTION__) ) {
-        $result = $connection->{__FUNCTION__}($table, $query);
+        $condition = tep_convert_where_to_array($query);
+        $result = $connection->{__FUNCTION__}($table, $condition);
       } else {
         $result = $connection->query($query, 1); // 1 - MYSQLI_USE_RESULT //! enum and set as numbers
       }

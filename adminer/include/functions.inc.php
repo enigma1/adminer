@@ -82,12 +82,71 @@ function tep_dd() {
   exit();
 }
 
-function tep_tr() {
+function tep_tr($exit=true) {
   echo '<pre>';
-  die(var_dump(debug_backtrace(false)));
-  exit();
+  var_dump(debug_backtrace(false));
+  if( $exit ) { exit(); } else { echo '</pre>'; };
 }
 
+function tep_convert_where_to_array($queryWhere) {
+  $condition = array();
+  $pattern = "\nWHERE ";
+  $pos = strpos($queryWhere, $pattern);
+  if( $pos === false ) return $condition;
+
+  $queryWhere = substr($queryWhere, $pos+strlen($pattern));
+  $condition = tep_get_all_where_segments($queryWhere);
+  return $condition;
+}
+
+function tep_get_all_where_segments($query) {
+  $operators = array('OR', 'AND');
+  $result = array();
+
+  foreach($operators as $op ) {
+    $index = 0;
+    $tmp_array = explode(') ' . $op . ' (', $query);
+    if( count($tmp_array) <= 1 ) continue;
+
+    foreach($tmp_array as $value ) {
+      $tmp2_array = tep_normalize_where_segment($value);
+      $result[$op][$index][$tmp2_array[0]] = $tmp2_array[1];
+      $index++;
+    }
+  }
+
+  if( empty($result) ) {
+    $tmp2_array = tep_normalize_where_segment($query);
+    $result['NO'][$tmp2_array[0]] = $tmp2_array[1];
+  }
+  return $result;
+}
+
+function tep_normalize_where_segment($value) {
+  $value = trim($value, "() ");
+  $result = explode(' = ', $value);
+  return $result;
+}
+
+/**
+ * http://us3.php.net/manual/en/function.ksort.php#109398
+ * function array_reorder_keys
+ * reorder the keys of an array in order of specified keynames; all other nodes not in $keynames will come after last $keyname, in normal array order
+ * @param array &$array - the array to reorder
+ * @param mixed $keynames - a csv or array of keynames, in the order that keys should be reordered
+ */
+function array_reorder_keys(&$array, $keynames){
+    if(empty($array) || !is_array($array) || empty($keynames)) return;
+    if(!is_array($keynames)) $keynames = explode(',',$keynames);
+    if(!empty($keynames)) $keynames = array_reverse($keynames);
+    foreach($keynames as $n){
+        if(array_key_exists($n, $array)){
+            $newarray = array($n=>$array[$n]); //copy the node before unsetting
+            unset($array[$n]); //remove the node
+            $array = $newarray + $array; //-MS- removed filter to get all keys back
+        }
+    }
+}
 
 /** Escape for TD
 * @param string

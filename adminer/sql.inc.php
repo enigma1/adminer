@@ -92,7 +92,9 @@ if (!$error && $_POST) {
 
 					} else { // end of a query
 						$empty = false;
-						$q = substr($query, 0, $pos);
+            $col_offset = 0;
+            if( substr($query, $pos, 1) == ';' ) $col_offset = 1;
+						$q = substr($query, 0, $pos+$col_offset);
 						$commands++;
 						$print = "<pre id='sql-$commands'><code class='jush-$jush'>" . shorten_utf8(trim($q), 1000) . "</code></pre>\n";
 						if (!$_POST["only_errors"]) {
