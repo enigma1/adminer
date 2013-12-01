@@ -79,13 +79,40 @@ function tep_dd() {
   foreach( $args as $arg ) {
     var_dump($arg);
   }
+  echo '</pre>';
   exit();
+}
+
+function tep_dv() {
+  echo '<pre>';
+  $args = func_get_args();
+  foreach( $args as $arg ) {
+    var_dump($arg);
+  }
+  echo '</pre>';
 }
 
 function tep_tr($exit=true) {
   echo '<pre>';
   var_dump(debug_backtrace(false));
-  if( $exit ) { exit(); } else { echo '</pre>'; };
+  echo '</pre>';
+  if( $exit ) exit();
+}
+
+
+function tep_convert_type($var, $type = false){
+  if( empty($type) ) {
+    if(is_string($var)) return '"' . $var . '"';
+    if(is_int($var)) return (int)$var;
+    if(is_bool($var)) return (bool)$var;
+    if(is_float($var)) return (float)$var;
+  } else {
+    if( $type == 'string' ) return '"' . $var . '"';
+    if( $type == 'integer' ) return (int)$var;
+    if( $type == 'boolean' ) return (bool)$var;
+    if( $type == 'float' ) return (float)$var;
+  }
+  return $var;
 }
 
 function tep_convert_where_to_array($queryWhere) {
@@ -125,6 +152,7 @@ function tep_get_all_where_segments($query) {
 function tep_normalize_where_segment($value) {
   $value = trim($value, "() ");
   $result = explode(' = ', $value);
+  $result = array_map('trim', $result);
   return $result;
 }
 
@@ -603,10 +631,12 @@ function query_redirect($query, $location, $message, $redirect = true, $execute 
 		$failed = !$connection->query($query);
 		$time = "; -- " . format_time($start, microtime(true));
 	}
+
 	$sql = "";
 	if ($query) {
 		$sql = $adminer->messageQuery($query . $time);
 	}
+
 	if ($failed) {
 		$error = error() . $sql;
 		return false;

@@ -1,6 +1,31 @@
 <?php
 $drivers["mongo"] = "MongoDB";
 
+/*
+BSON Data Types
+http://docs.mongodb.org/manual/reference/operator/query/type/
+
+Double 	1
+String 	2
+Object 	3
+Array 	4
+Binary data 	5
+Undefined (deprecated) 	6
+Object id 	7
+Boolean 	8
+Date 	9
+Null 	10
+Regular Expression 	11
+JavaScript 	13
+Symbol 	14
+JavaScript (with scope) 	15
+32-bit integer 	16
+Timestamp 	17
+64-bit integer 	18
+Min key 	255
+Max key 	127
+*/
+
 if (isset($_GET["mongo"])) {
   $possible_drivers = array("mongo");
   define("DRIVER", "mongo");
@@ -8,6 +33,38 @@ if (isset($_GET["mongo"])) {
   if (class_exists('MongoDB')) {
     class Min_DB {
       var $extension = "Mongo", $error, $_link, $_db, $mbuffer='';
+      var $field_types = array(
+        1 => array('name' => 'Double'),
+        3 => array('name' => 'Object'),
+        4 => array('name' => 'Array'),
+        5 => array('name' => 'Binary Data'),
+        6 => array('name' => 'undefined'),
+        7 => array('name' => 'ObjectId'),
+        8 => array('name' => 'Boolean'),
+        9 => array('name' => 'Date'),
+        10 => array('name' => 'Null'),
+        11 => array('name' => 'Regular Expression'),
+        13 => array('name' => 'Javascript'),
+        14 => array('name' => 'Symbol'),
+        15 => array('name' => 'Javascript scoped'),
+        16 => array('name' => '32bit Integer'),
+        17 => array('name' => 'Timestamp'),
+        18 => array('name' => '64bit Integer'),
+        255 => array('name' => 'Min Key'),
+        127 => array('name' => 'Max Key'),
+        2 => array('name' => 'String'),
+      );
+
+      var $field_to_php = array(
+       'Double' => 'float',
+       'Object' => 'object',
+       'Array' => 'array',
+       'Boolean' => 'boolean',
+       'Null' => 'null',
+       '32bit Integer' => 'integer',
+       '64bit Integer' => 'integer',
+       'String' => 'string',
+      );
 
       function connect($server, $username, $password) {
         global $adminer;
@@ -85,6 +142,10 @@ if (isset($_GET["mongo"])) {
         $json .= ',{';
         foreach($set as $key => $value) {
           if( $key == '_id' ) continue;
+          $type = $this->scan_type($table, $key);
+          if($type != 'undefined' && isset($this->field_to_php[$type]) ) {
+            settype($value, $this->field_to_php[$type]);
+          }
           $json .= $key . ':' . $value . ',';
         }
 
@@ -154,9 +215,22 @@ if (isset($_GET["mongo"])) {
           }
         }
         $json = rtrim($json, ',') . '}';
-
         return $json;
       }
+
+      function scan_type($table, $field_name) {
+        foreach($this->field_types as $key => $value) {
+          //  $query = 'findOne({' . $field_name . ': {$type: ' . $key . '}})';
+          $query = 'find({' . $field_name . ': {$exists: true, $type: ' . $key . '}}, {' . $field_name . ': 1}).limit(1).toArray()';
+          $cmd = $table.'.'.$query;
+
+          $result = $this->query($cmd);
+          if( !$result || !$result->num_rows || !is_array($result->_rows[0]) ) continue;
+          return $value['name'];
+        }
+        return $this->field_types[6]['name'];
+      }
+
 
       function quote($string) {
         return "'" . str_replace("'", "''", $string) . "'";
@@ -241,6 +315,7 @@ if (isset($_GET["mongo"])) {
           'charsetnr' => $this->_charset[$name],
         );
       }
+
     }
   }
 
@@ -268,7 +343,15 @@ if (isset($_GET["mongo"])) {
           $where[0] = preg_replace("/_id \= \'([0-9a-z]+)\'/", '$1', $where[0]);
           $query = 'findOne({_id: ObjectId("' . $where[0] . '")})';
         } else {
-          $query = 'find()' . $skip.$order.$limit . '.toArray()';
+          $json = '';
+          if( !empty($where) && is_array($where) ) {
+            for($i=0, $j=count($where); $i<$j; $i++) {
+              $tmp_array = tep_normalize_where_segment($where[$i]);
+              $json .= $tmp_array[0] . ': ' . $tmp_array[1] . ',';
+            }
+            $json = rtrim($json, ',');
+          }
+          $query = 'find({' . $json . '})' . $skip.$order.$limit . '.toArray()';
         }
       } else {
         $cols = '{}';
@@ -358,6 +441,10 @@ if (isset($_GET["mongo"])) {
     return true;
   }
 
+	function auto_increment() {
+    return '';
+  }
+
   function indexes($table, $connection2 = null) {
     global $connection;
     $return = array();
@@ -389,6 +476,8 @@ if (isset($_GET["mongo"])) {
 
     $result_array = array("_id" => array(
       "field" => "_id",
+      "type" => 'ObjectId',
+      "length" => 64,
       "auto_increment" => true,
       "privileges" => array("select" => 1, "insert" => 1, "update" => 1),
     ));
@@ -401,13 +490,10 @@ if (isset($_GET["mongo"])) {
     foreach($result as $key => $val ) {
       if( $key == '_id' ) continue;
 
-//      $query = 'findOne({_id: ObjectId("' . $val . '")})';
-//      $cmd = $table.'.'.$query;
-//      $result_type = $connection->query($cmd);
-
+      $field_type = $connection->scan_type($table, $key);
       $result_array[$key] = array(
         "field" => $key,
-//        "type" => $match[1],
+        "type" => $field_type,
         "privileges" => array("select" => 1, "insert" => 1, "update" => 1),
       );
     }
@@ -437,9 +523,73 @@ if (isset($_GET["mongo"])) {
   }
 
   function alter_table($table, $name, $fields, $foreign, $comment, $engine, $collation, $auto_increment, $partitioning) {
+//tep_dd($table, $name, $fields, $foreign, $comment, $engine, $collation, $auto_increment, $partitioning);
     global $connection;
     if ($table == "") {
       $connection->_db->createCollection($name);
+      return true;
+    }
+
+    foreach($fields as $field_data) {
+      $new_field = false;
+      $control = '$set';
+      $field_name = $field_data[0];
+
+      if( empty($field_name) && isset($field_data[1][0]) ) {
+        $new_field = true;
+        $field_name = $field_data[1][0];
+      }
+      $field_type = trim($field_data[1][1]);
+
+      if( isset($field_data[1][0]) && $field_name != $field_data[1][0] ) {
+        $field_name = $field_data[1][0];
+        $control = '$rename';
+      }
+
+      if( !empty($field_name) && !isset($field_data[1][0]) ) {
+        $json = '{' . $field_name . ': {$exists: true}}, {$unset: {"' . $field_name. '": true}}';
+        $query = $table.'.update(' . $json . ', false, true)';
+        $result = $connection->query($query);
+        if( !$result ) return false;
+        continue;
+      }
+
+      if( $control == '$rename' ) {
+        $json = '{}, { $rename: {"' . $field_data[0]. '": "' . $field_name . '"}}';
+        $query = $table.'.update(' . $json . ', false, true)';
+        $result = $connection->query($query);
+        if( !$result ) return false;
+        $control = '$set';
+      }
+
+      if( !isset($connection->field_to_php[$field_type]) ) continue;
+
+      $query = 'find({' . $field_name . ': {$exists: true}}).toArray()';
+      $cmd = $table.'.'.$query;
+      $result = $connection->query($cmd);
+      if( !$result ) return false;
+
+      $default = $field_data[1][3];
+      if( !empty($default) ) {
+        $tmp_array = explode(' DEFAULT ', $default);
+        $default = trim($tmp_array[1]);
+      }
+
+      foreach($result->_rows as $entry) {
+        if( empty($entry) ) {
+          $entry = array($field_name => $default);
+        }
+
+        if( $new_field ) {
+          $json = '{},';
+        } else {
+          $json = '{' . $field_name . ':' . tep_convert_type($entry[$field_name]) . '},';
+        }
+        $value = $entry[$field_name];
+        $json .= '{ $set: {' . $field_name . ': ' . tep_convert_type($value, $connection->field_to_php[$field_type]) . '}}';
+        $query = $table.'.update(' . $json . ')';
+        $result = $connection->query($query);
+      }
       return true;
     }
   }
@@ -476,10 +626,23 @@ if (isset($_GET["mongo"])) {
 
   function support($feature) {
 //    return preg_match('~^(database|table|columns|sql|indexes|view|trigger|variables|status|dump|move_col|drop_col)$~', $feature);
-    return preg_match("~database|table|columns|sql|indexes|dump|drop_col~", $feature);
+    return preg_match("~database|table|columns|type|sql|indexes|dump|drop_col~", $feature);
   }
 
   $jush = "mongo";
+	$types = array(); ///< @var array ($type => $maximum_unsigned_length, ...)
+	$structured_types = array(); ///< @var array ($description => array($type, ...), ...)
+	foreach (array(
+		lang('Strings') => array("String" => 16777215, "ObjectId" => 64),
+		lang('Numbers') => array("Double" => 16, "32bit Integer" => 8, "64bit Integer" => 16),
+		lang('Date and time') => array("ISODate" => 255),
+		lang('Lists') => array("Array" => 16777215, "Javascript" => 16777215),
+		lang('Binary') => array("BinData" => 16777215),
+	) as $key => $val) {
+		$types += $val;
+		$structured_types[$key] = array_keys($val);
+	}
+
   $operators = array("=");
   $functions = array();
   $grouping = array();
