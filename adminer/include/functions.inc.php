@@ -102,24 +102,33 @@ function tep_tr($exit=true) {
 
 function tep_convert_type($var, $type = false){
   if( empty($type) ) {
-    if(is_string($var)) return '"' . $var . '"';
+    if(is_string($var)) return '"' . trim($var, '"') . '"';
     if(is_int($var)) return (int)$var;
     if(is_bool($var)) return (bool)$var;
     if(is_float($var)) return (float)$var;
   } else {
-    if( $type == 'string' ) return '"' . $var . '"';
-    if( $type == 'integer' ) return (int)$var;
+    if( $type == 'string' ) return '"' . trim($var, '"') . '"';
+    if( $type == 'integer' ) {
+      $result = (int)(preg_replace('/[^-0-9]/','',$var));
+      return $result;
+    }
     if( $type == 'boolean' ) return (bool)$var;
-    if( $type == 'float' ) return (float)$var;
+    if( $type == 'float' ) {
+      $result = (float)(preg_replace('/[^-0-9\.]/','',$var));
+      return $result;
+    }
   }
   return $var;
 }
 
-function tep_convert_where_to_array($queryWhere) {
+function tep_convert_where_to_array($queryWhere, $pattern="\nWHERE") {
   $condition = array();
-  $pattern = "\nWHERE ";
-  $pos = strpos($queryWhere, $pattern);
-  if( $pos === false ) return $condition;
+  $pos = 0;
+
+  if( !empty($pattern) ) {
+    $pos = strpos($queryWhere, $pattern);
+    if( $pos === false ) return $condition;
+  }
 
   $queryWhere = substr($queryWhere, $pos+strlen($pattern));
   $condition = tep_get_all_where_segments($queryWhere);
@@ -132,7 +141,7 @@ function tep_get_all_where_segments($query) {
 
   foreach($operators as $op ) {
     $index = 0;
-    $tmp_array = explode(') ' . $op . ' (', $query);
+    $tmp_array = explode(' ' . $op . ' ', $query);
     if( count($tmp_array) <= 1 ) continue;
 
     foreach($tmp_array as $value ) {

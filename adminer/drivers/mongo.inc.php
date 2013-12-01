@@ -140,11 +140,12 @@ if (isset($_GET["mongo"])) {
       function update($table, $set, $condition=array(), $limit=1) {
         $json = $this->conditionToJson($condition);
         $json .= ',{';
+
         foreach($set as $key => $value) {
           if( $key == '_id' ) continue;
           $type = $this->scan_type($table, $key);
           if($type != 'undefined' && isset($this->field_to_php[$type]) ) {
-            settype($value, $this->field_to_php[$type]);
+            $value = tep_convert_type($value, $this->field_to_php[$type]);
           }
           $json .= $key . ':' . $value . ',';
         }
@@ -312,15 +313,14 @@ if (isset($_GET["mongo"])) {
           'charsetnr' => $this->_charset[$name],
         );
       }
-
     }
   }
 
 
   class Min_Driver extends Min_SQL {
     function select($table, $select, $where, $group, $order, $limit, $page) {
-
       global $connection;
+
       if ($select == array("*")) {
         $select = array();
       } else {
@@ -335,20 +335,16 @@ if (isset($_GET["mongo"])) {
       $limit = empty($limit)?'':'.limit(' . (int)$limit . ')';
 
       if( !empty($where) ) {
-        $pos = strpos($where[0], '_id');
+        $where = tep_convert_where_to_array($where[0], '');
+        $where = $connection->conditionToJson($where);
+
+        $pos = strpos($where, '_id');
         if( $pos !== false && !$pos ) {
-          $where[0] = preg_replace("/_id \= \'([0-9a-z]+)\'/", '$1', $where[0]);
-          $query = 'findOne({_id: ObjectId("' . $where[0] . '")})';
+          $id = preg_replace("/_id \= \'([0-9a-z]+)\'/", '$1', $where);
+          $query = 'findOne({_id: ObjectId("' . $id . '")})';
         } else {
-          $json = '';
-          if( !empty($where) && is_array($where) ) {
-            for($i=0, $j=count($where); $i<$j; $i++) {
-              $tmp_array = tep_normalize_where_segment($where[$i]);
-              $json .= $tmp_array[0] . ': ' . $tmp_array[1] . ',';
-            }
-            $json = rtrim($json, ',');
-          }
-          $query = 'find({' . $json . '})' . $skip.$order.$limit . '.toArray()';
+          $json = $where;
+          $query = 'find(' . $json . ')' . $skip.$order.$limit . '.toArray()';
         }
       } else {
         $cols = '{}';
