@@ -15,6 +15,9 @@ $orig_fields = array();
 $table_status = array();
 if ($TABLE != "") {
 	$orig_fields = fields($TABLE);
+  if( !is_array($orig_fields) ) {
+    $orig_fields = array();
+  }
 	$table_status = table_status($TABLE);
 	if (!$table_status) {
 		$error = lang('No tables.');

@@ -220,7 +220,6 @@ if (isset($_GET["mongo"])) {
 
       function scan_type($table, $field_name) {
         foreach($this->field_types as $key => $value) {
-          //  $query = 'findOne({' . $field_name . ': {$type: ' . $key . '}})';
           $query = 'find({' . $field_name . ': {$exists: true, $type: ' . $key . '}}, {' . $field_name . ': 1}).limit(1).toArray()';
           $cmd = $table.'.'.$query;
 
@@ -231,11 +230,9 @@ if (isset($_GET["mongo"])) {
         return $this->field_types[6]['name'];
       }
 
-
       function quote($string) {
         return "'" . str_replace("'", "''", $string) . "'";
       }
-
     }
 
     class Min_Result {
@@ -485,6 +482,7 @@ if (isset($_GET["mongo"])) {
     if( empty($result)) return $result_array;
 
     $result = $result->fetch_assoc();
+    if( empty($result) ) return array();
 
     $val = '';
     foreach($result as $key => $val ) {
@@ -522,12 +520,20 @@ if (isset($_GET["mongo"])) {
     return null;
   }
 
+	/** Get user defined types
+	* @return array
+	*/
+	function types() {
+		return array();
+	}
+
   function alter_table($table, $name, $fields, $foreign, $comment, $engine, $collation, $auto_increment, $partitioning) {
-//tep_dd($table, $name, $fields, $foreign, $comment, $engine, $collation, $auto_increment, $partitioning);
     global $connection;
-    if ($table == "") {
-      $connection->_db->createCollection($name);
-      return true;
+    if( empty($table) ) {
+      $table = $name;
+      $query = $table.'.insert({})';
+      $result = $connection->query($query);
+      if( !$result ) return false;
     }
 
     foreach($fields as $field_data) {
@@ -567,6 +573,7 @@ if (isset($_GET["mongo"])) {
       $query = 'find({' . $field_name . ': {$exists: true}}).toArray()';
       $cmd = $table.'.'.$query;
       $result = $connection->query($cmd);
+
       if( !$result ) return false;
 
       $default = $field_data[1][3];
